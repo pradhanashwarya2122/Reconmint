@@ -29,11 +29,22 @@
 
 ![ReconMint landing page](docs/img/landingpage.png)
 
+> **ReconMint is a two-verifier reconciliation agent.** One guards the AI: any rupee the LLM writes that isn't grounded in the audit table gets rejected. One guards the source data: every exception is appealed live to `api.razorpay.com` to catch stale merchant CSVs. **The Razorpay API is not an integration in this project. It's the second verifier.**
+
 Every Indian merchant on Razorpay lives with three ledgers that never quite agree: their orders, Razorpay's settlement report, and their bank statement. Fees, GST, TCS, T+2 timing, chargebacks. All of it drifts. Most merchants still reconcile it by hand in a spreadsheet, once a month, after the fact.
 
 ReconMint is an **agent that runs the loop for them.** Seven sub-agents cooperate on the batch. Each one owns a decision, branches per record, and writes its reasoning to an audit table. The LLM is on a short leash: it can parse a question and phrase an answer, but a verifier vetoes any rupee it can't ground in the audit trail.
 
 **The AI never touches a number it can't prove.** That's the whole product.
+
+## What's actually unusual about this build
+
+Reconciliation is common. Most of what ReconMint does is table stakes. Four things are not:
+
+- **Truth-Anchor Agent (the Razorpay API as a verifier).** Every exception the engine surfaces is appealed live to `api.razorpay.com` for that exact payment id. If the merchant's uploaded CSV disagrees with what Razorpay actually returns on gross, fee, or tax, the drift is flagged as a stale export. No amount of three-way file matching could ever catch a stale source.
+- **Hallucination verifier with magnitude compare.** Every rupee the LLM tries to state is regex-extracted and magnitude-checked against the audit table. If the number doesn't match a real magnitude, the LLM's phrasing is rejected and the deterministic answer is used instead. Signed compare would false-reject correct chargebacks (documented in `FAILURES.md`).
+- **Repair Agent with per-record branching.** For every unmatched settlement, three rescue strategies are tried in order (normalize UTR, widen date window, fuzzy amount). First one to clear 85% confidence wins. Every attempt is logged with score and verdict. This is real agent behavior, not a pipeline with an LLM in it.
+- **149,250 rows in 217 seconds.** Track 4 asks for 50+ record batches. Benchmark verified at ~3,000x that scale, 687 rec/s sustained. Numbers are in `scripts/benchmark.py` and reproducible from the CLI.
 
 ---
 
